@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Almacén",
+    "slug": "almacen-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#E9EAE1"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.tuusuario.almacenapp"
+    }
+  }
+}
