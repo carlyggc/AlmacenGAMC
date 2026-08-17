@@ -1,15 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ── DIRECCIÓN DEL BACKEND ──
-// '' = modo local. 'http://localhost:3001' = mismo equipo.
-// Desde OTRA PC de tu red: 'http://192.168.X.X:3001'
-export const API_URL = 'http://localhost:3001';
+// ── DIRECCIÓN DEL BACKEND (tu túnel público) ──
+export const API_URL = 'https://icon-scoff-skimmed.ngrok-free.dev';
 
 const KEY = 'almacen_productos';
 const CAT_KEY = 'almacen_catalogo';
 const UNI_KEY = 'almacen_unidades';
 const SAL_KEY = 'almacen_salidas';
 const REP_KEY = 'almacen_reportes';
+
+// ✅ Evita la página de aviso del plan gratis de ngrok
+const NGROK = { 'ngrok-skip-browser-warning': '1' };
 
 async function readLocal(key) {
   try { const raw = await AsyncStorage.getItem(key); return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
@@ -18,14 +19,14 @@ async function writeLocal(key, list) {
   try { await AsyncStorage.setItem(key, JSON.stringify(list)); } catch (e) {}
 }
 async function apiGet(col) {
-  const res = await fetch(API_URL + '/api/' + col);
+  const res = await fetch(API_URL + '/api/' + col, { headers: NGROK });
   if (!res.ok) throw new Error('backend');
   return await res.json();
 }
 async function apiPut(col, list) {
   const res = await fetch(API_URL + '/api/' + col, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...NGROK },
     body: JSON.stringify(list),
   });
   if (!res.ok) throw new Error('backend');
@@ -35,11 +36,10 @@ async function loadCol(col, key) {
     try {
       const remote = await apiGet(col);
       if (Array.isArray(remote) && remote.length) return remote;
-      // ✅ Backend vacío + datos locales = migración automática (una sola vez)
       const local = await readLocal(key);
-      if (local.length) { await apiPut(col, local); return local; }
+      if (local.length) { await apiPut(col, local); return local; } // migración automática
       return [];
-    } catch (e) {} // back apagado → modo local
+    } catch (e) {}
   }
   return readLocal(key);
 }
@@ -48,23 +48,14 @@ async function saveCol(col, key, list) {
   await writeLocal(key, list);
 }
 
-// ✅ Productos
 export const loadProducts = () => loadCol('productos', KEY);
 export const saveProducts = (l) => saveCol('productos', KEY, l);
-
-// ✅ Catálogo (sugerencias de nombres/categorías/fotos)
 export const loadCatalog = () => loadCol('catalogo', CAT_KEY);
 export const saveCatalog = (l) => saveCol('catalogo', CAT_KEY, l);
-
-// ✅ Unidades
 export const loadUnits = () => loadCol('unidades', UNI_KEY);
 export const saveUnits = (l) => saveCol('unidades', UNI_KEY, l);
-
-// ✅ Historial de salidas (lo usa SalidasScreen)
 export const loadWithdrawals = () => loadCol('salidas', SAL_KEY);
 export const saveWithdrawals = (l) => saveCol('salidas', SAL_KEY, l);
-
-// ✅ Bitácora de reportes emitidos (lo usa ReportModal)
 export const loadReports = () => loadCol('reportes', REP_KEY);
 export async function saveReportLog(rec) {
   const list = await loadReports();
