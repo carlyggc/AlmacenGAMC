@@ -6,7 +6,7 @@ import { IconCaja, IconAdvertencia } from './BoxIcon';
 import CSVPreviewModal from './CSVPreviewModal';
 import ModalShell from './ModalShell';
 import ReportButton from './ReportButton';
-import { byName, byCat } from '../utils/helpers';
+import { byName, byCat, catColor } from '../utils/helpers';
 
 export default function StockScreen({ products, onBack, onMarkFaltante }) {
   const [search, setSearch] = useState('');
@@ -25,9 +25,8 @@ export default function StockScreen({ products, onBack, onMarkFaltante }) {
   const map = {};
   filtered.forEach(p => {
     const k = p.name.trim().toUpperCase();
-    if (!map[k]) map[k] = { name: p.name, unit: p.unit || 'Unidad', cat: p.cat || 'Sin categoría', photo: p.photo || null, total: 0, entries: [], tool: false };
+    if (!map[k]) map[k] = { name: p.name, unit: p.unit || 'Unidad', cat: p.cat || 'Sin categoría', photo: p.photo || null, total: 0, entries: [] };
     if (!map[k].photo && p.photo) map[k].photo = p.photo;
-    if (p.category === 'herramienta') map[k].tool = true;
     map[k].total += p.qty;
     map[k].entries.push(p);
   });
@@ -57,7 +56,7 @@ export default function StockScreen({ products, onBack, onMarkFaltante }) {
               <Text style={[ui.tabText, effectiveTab === 'todos' && ui.tabTextActive]}>Todos</Text>
             </TouchableOpacity>
             {cats.map(c => (
-              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && ui.tabActivePurple]} onPress={() => setTab(c)}>
+              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && { backgroundColor: catColor(c), borderColor: catColor(c) }]} onPress={() => setTab(c)}>
                 <Text style={[ui.tabText, effectiveTab === c && ui.tabTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -75,7 +74,7 @@ export default function StockScreen({ products, onBack, onMarkFaltante }) {
           contentContainerStyle={ui.list}
           renderItem={({ item }) => (
             <View style={ui.card}>
-              <View style={[ui.categoryTag, item.tool ? ui.tagHerramienta : ui.tagMaterial]}>
+              <View style={[ui.categoryTag, { backgroundColor: catColor(item.cat) }]}>
                 <Text style={ui.categoryTagText}>{(item.cat || 'General').toUpperCase()}</Text>
               </View>
               <View style={ui.photoWrap}>

@@ -7,7 +7,7 @@ import AddProductModal from './AddProductModal';
 import CSVPreviewModal from './CSVPreviewModal';
 import ConfirmModal from './ConfirmModal';
 import ReportButton from './ReportButton';
-import { byName, byCat } from '../utils/helpers';
+import { byName, byCat, catColor } from '../utils/helpers';
 
 export default function FaltantesScreen({ products, onBack, onAdd, onDelete, onUpdatePrice, onUnmark }) {
   const [search, setSearch] = useState('');
@@ -41,7 +41,7 @@ export default function FaltantesScreen({ products, onBack, onAdd, onDelete, onU
               <Text style={[ui.tabText, effectiveTab === 'todos' && ui.tabTextActive]}>Todos</Text>
             </TouchableOpacity>
             {cats.map(c => (
-              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && ui.tabActivePurple]} onPress={() => setTab(c)}>
+              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && { backgroundColor: catColor(c), borderColor: catColor(c) }]} onPress={() => setTab(c)}>
                 <Text style={[ui.tabText, effectiveTab === c && ui.tabTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -61,7 +61,7 @@ export default function FaltantesScreen({ products, onBack, onAdd, onDelete, onU
             const symbol = item.currency === '$us' ? '$' : 'Bs';
             return (
               <View style={ui.card}>
-                <View style={[ui.categoryTag, item.category === 'herramienta' ? ui.tagHerramienta : ui.tagMaterial]}>
+                <View style={[ui.categoryTag, { backgroundColor: catColor(item.cat) }]}>
                   <Text style={ui.categoryTagText}>{(item.cat || 'General').toUpperCase()}</Text>
                 </View>
                 {item.qty > 0 && (

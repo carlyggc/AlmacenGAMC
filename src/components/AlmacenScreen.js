@@ -8,20 +8,8 @@ import AddProductModal from './AddProductModal';
 import CSVPreviewModal from './CSVPreviewModal';
 import CSVImportModal from './CSVImportModal';
 import ReportButton from './ReportButton';
+import { byName, byCat, monthInfo, catColor } from '../utils/helpers';
 
-const TABS = [
-  { key: 'todos', label: 'Todos' },
-  { key: 'herramienta', label: 'Herramientas' },
-  { key: 'material', label: 'Materiales' },
-];
-const byName = (a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
-const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
-const monthInfo = (iso) => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: `${MESES[d.getMonth()]} ${d.getFullYear()}` };
-};
 const localDateStr = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -87,9 +75,11 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
     if (dateTo && dstr > dateTo) return false;
     return true;
   };
-  const filtered = products
-    .filter(p => p.deposit === deposit)
-    .filter(p => tab === 'todos' || p.category === tab)
+  const depositProducts = products.filter(p => p.deposit === deposit);
+  const cats = Array.from(new Set(depositProducts.map(p => p.cat || 'Sin categoría'))).sort(byCat);
+  const effectiveTab = tab !== 'todos' && !cats.includes(tab) ? 'todos' : tab;
+  const filtered = depositProducts
+    .filter(p => effectiveTab === 'todos' || (p.cat || 'Sin categoría') === effectiveTab)
     .filter(p => p.name.toLowerCase().includes(search.trim().toLowerCase()))
     .filter(inRange)
     .sort(byName);
@@ -107,10 +97,11 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
   });
   monthGroups.forEach(g => {
     g.items.sort(byName);
-    g.mats = g.items.filter(i => i.category !== 'herramienta');
-    g.tools = g.items.filter(i => i.category === 'herramienta');
+    const cmap = {};
+    g.items.forEach(i => { const c = i.cat || 'Sin categoría'; (cmap[c] = cmap[c] || []).push(i); });
+    g.catGroups = Object.keys(cmap).sort(byCat).map(c => ({ cat: c, items: cmap[c] }));
   });
-  const totalDep = products.filter(p => p.deposit === deposit).length;
+  const totalDep = depositProducts.length;
   const webDateStyle = { borderWidth: 2, borderColor: colors.white, borderRadius: 6, padding: '4px 6px', backgroundColor: colors.surface, color: colors.ink, fontSize: 12 };
   const renderGrid = (items) => (
     <View style={st.grid}>
@@ -122,7 +113,6 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
       ))}
     </View>
   );
-  const activeTabStyle = (key) => (key === 'material' ? ui.tabActiveTeal : ui.tabActivePurple);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -131,9 +121,12 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
         <Text style={ui.title}>DEPÓSITO {deposit.toUpperCase()}</Text>
         <TextInput style={ui.search} placeholder="Buscar..." placeholderTextColor={colors.steel} value={search} onChangeText={setSearch} />
         <View style={ui.tabsWrap}>
-          {TABS.map(t => (
-            <TouchableOpacity key={t.key} style={[ui.tab, tab === t.key && activeTabStyle(t.key)]} onPress={() => setTab(t.key)}>
-              <Text style={[ui.tabText, tab === t.key && ui.tabTextActive]}>{t.label}</Text>
+          <TouchableOpacity style={[ui.tab, effectiveTab === 'todos' && ui.tabActivePurple]} onPress={() => setTab('todos')}>
+            <Text style={[ui.tabText, effectiveTab === 'todos' && ui.tabTextActive]}>Todos</Text>
+          </TouchableOpacity>
+          {cats.map(c => (
+            <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && { backgroundColor: catColor(c), borderColor: catColor(c) }]} onPress={() => setTab(c)}>
+              <Text style={[ui.tabText, effectiveTab === c && ui.tabTextActive]}>{c}</Text>
             </TouchableOpacity>
           ))}
           <View style={st.headerBtns}>
@@ -181,22 +174,14 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
                 <Text style={st.monthTitle}>{g.label.toUpperCase()}</Text>
                 <Text style={st.monthCount}>{g.items.length} registro(s)</Text>
               </View>
-              {g.mats.length > 0 && (
-                <View>
-                  <View style={[st.typeHeader, { backgroundColor: colors.purple }]}>
-                    <Text style={st.typeHeaderText}>MATERIALES ({g.mats.length})</Text>
+              {g.catGroups.map(cg => (
+                <View key={cg.cat}>
+                  <View style={[st.typeHeader, { backgroundColor: catColor(cg.cat) }]}>
+                    <Text style={st.typeHeaderText}>{cg.cat.toUpperCase()} ({cg.items.length})</Text>
                   </View>
-                  {renderGrid(g.mats)}
+                  {renderGrid(cg.items)}
                 </View>
-              )}
-              {g.tools.length > 0 && (
-                <View>
-                  <View style={[st.typeHeader, { backgroundColor: colors.teal }]}>
-                    <Text style={st.typeHeaderText}>HERRAMIENTAS ({g.tools.length})</Text>
-                  </View>
-                  {renderGrid(g.tools)}
-                </View>
-              )}
+              ))}
             </View>
           ))}
         </ScrollView>
@@ -219,6 +204,7 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
   );
 }
 
+// Solo lo ÚNICO de esta pantalla
 const st = StyleSheet.create({
   headerBtns: { marginLeft: 'auto', flexDirection: 'row', gap: 6, marginBottom: 4 },
   importBtnText: { color: colors.teal, fontWeight: '800', fontSize: 11 },

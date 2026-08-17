@@ -6,13 +6,12 @@ import { IconCalendario, IconBasura } from './BoxIcon';
 import PhotoChooserPanel from './PhotoChooserPanel';
 import { pickFromLibrary, takePhoto } from '../utils/photos';
 import ConfirmModal from './ConfirmModal';
-import { fmtDate } from '../utils/helpers';
+import { fmtDate, catColor } from '../utils/helpers';
 
 export default function ProductCard({ product, onRename, onChangeQty, onSetQty, onChangePhoto, onDelete }) {
   const [name, setName] = useState(product.name);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
-  const isTool = product.category === 'herramienta';
 
   function commitName() {
     const trimmed = name.trim();
@@ -28,8 +27,8 @@ export default function ProductCard({ product, onRename, onChangeQty, onSetQty, 
 
   return (
     <View style={ui.card}>
-      <View style={[ui.categoryTag, isTool ? ui.tagHerramienta : ui.tagMaterial]}>
-        <Text style={ui.categoryTagText}>{(product.cat || (isTool ? 'Herramientas' : 'Materiales')).toUpperCase()}</Text>
+      <View style={[ui.categoryTag, { backgroundColor: catColor(product.cat) }]}>
+        <Text style={ui.categoryTagText}>{(product.cat || 'General').toUpperCase()}</Text>
       </View>
       <TouchableOpacity style={ui.photoWrap} onPress={() => setPickerVisible(true)} activeOpacity={0.8}>
         {product.photo ? (

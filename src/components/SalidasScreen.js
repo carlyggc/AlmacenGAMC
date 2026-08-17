@@ -6,7 +6,7 @@ import ModalShell from './ModalShell';
 import ReportModal from './ReportModal';
 import { IconReporte } from './BoxIcon';
 import { loadWithdrawals, saveWithdrawals } from '../utils/storage';
-import { byName, byCat } from '../utils/helpers';
+import { byName, byCat, catColor } from '../utils/helpers';
 
 function HistoryModal({ visible, onClose, history }) {
   const rows = [...history].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -49,9 +49,8 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
   const map = {};
   filteredEntries.forEach(p => {
     const k = p.name.trim().toUpperCase();
-    if (!map[k]) map[k] = { name: p.name, unit: p.unit || 'Unidad', cat: p.cat || 'Sin categoría', photo: p.photo || null, total: 0, entries: [], tool: false };
+    if (!map[k]) map[k] = { name: p.name, unit: p.unit || 'Unidad', cat: p.cat || 'Sin categoría', photo: p.photo || null, total: 0, entries: [] };
     if (!map[k].photo && p.photo) map[k].photo = p.photo;
-    if (p.category === 'herramienta') map[k].tool = true;
     map[k].total += p.qty;
     map[k].entries.push(p);
   });
@@ -92,8 +91,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
         <View style={ui.btnsRow}>
           <TouchableOpacity style={ui.headerBtn} onPress={() => setReportHistory(true)}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <IconReporte color={colors.purple} />
-              <Text style={st.histBtnText}>Historial Salidas</Text>
+              <IconReporte color={colors.purple} /><Text style={st.histBtnText}>Historial Salidas</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -103,7 +101,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
               <Text style={[ui.tabText, effectiveTab === 'todos' && ui.tabTextActive]}>Todos</Text>
             </TouchableOpacity>
             {cats.map(c => (
-              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && ui.tabActiveTeal]} onPress={() => setTab(c)}>
+              <TouchableOpacity key={c} style={[ui.tab, effectiveTab === c && { backgroundColor: catColor(c), borderColor: catColor(c) }]} onPress={() => setTab(c)}>
                 <Text style={[ui.tabText, effectiveTab === c && ui.tabTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -118,7 +116,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
           contentContainerStyle={ui.list}
           renderItem={({ item }) => (
             <View style={ui.card}>
-              <View style={[ui.categoryTag, item.tool ? ui.tagHerramienta : ui.tagMaterial]}>
+              <View style={[ui.categoryTag, { backgroundColor: catColor(item.cat) }]}>
                 <Text style={ui.categoryTagText}>{(item.cat || 'General').toUpperCase()}</Text>
               </View>
               <View style={ui.photoWrap}>
