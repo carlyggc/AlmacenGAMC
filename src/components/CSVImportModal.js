@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
+import { Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { colors, radius, DEPOSITOS } from '../theme';
 import { ui } from '../styles';
 import ModalShell from './ModalShell';
-import { loadCatalog, saveCatalog } from '../utils/storage';
+import { getCatalog, upsertCatalog } from '../utils/api';
 
 const MAT_KW = ['CABLE','JACK','RJ-','PATCH','CINTA','GRAPA','TOMA','CANAL','PISO','CONO','LINTERNA','PIGTAIL','ADAPTADOR','SOPORTE','MALLA','ABRAZADERA','CRUCETA','RACK','FIBRA','MUFLA','BANDEJA','CTO','GPON','TRANSEIVER','PDU','CAJA','CONECTOR','BIPOLAR','TELEFON','COAXIAL','UTP','HDMI','TORNILLO','PILA','BATERIA','RAM','LICENCIA','FIREWALL','CERTIFICADO','DOMINIO'];
 function guessType(name, cat) {
@@ -53,9 +53,8 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
   const [preview, setPreview] = useState(null);
   const [catalog, setCatalog] = useState([]);
   useEffect(() => {
-    if (visible) { loadCatalog().then(setCatalog); if (initialDeposit) setDeposit(initialDeposit); }
+    if (visible) { getCatalog().then(setCatalog); if (initialDeposit) setDeposit(initialDeposit); }
   }, [visible, initialDeposit]);
-
   function handleFile(e) {
     const f = e.target.files && e.target.files[0]; if (!f) return;
     const rd = new FileReader();
@@ -64,27 +63,23 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
   }
   function confirm() {
     if (!preview || !preview.length) return;
-    const cat = [...catalog];
     const products = preview.map(p => {
       const up = p.name.toUpperCase();
-      let match = cat.find(c => c.name.toUpperCase() === up);
-      if (!match) { match = { name: p.name, unit: p.unit, cat: p.cat, type: guessType(p.name, p.cat), price: p.price, photo: null }; cat.push(match); }
-      if (p.price && !match.price) match.price = p.price;
-      if (!match.cat) match.cat = p.cat;
+      const match = catalog.find(c => c.name.toUpperCase() === up);
+      const price = p.price || (match && match.price) || 0;
+      const catFinal = p.cat || (match && match.cat) || 'Materiales';
+      const photo = (match && match.photo) || null;
+      upsertCatalog({ name: p.name, unit: p.unit, cat: catFinal, type: guessType(p.name, p.cat), price, photo });
       return {
         name: p.name, unit: p.unit, category: guessType(p.name, p.cat),
-        cat: p.cat || match.cat || 'Materiales',
-        qty: p.existing || 0, required: p.required || 0,
-        price: p.price || match.price || 0, currency: 'Bs',
-        deposit, photo: match.photo || null,
+        cat: catFinal, qty: p.existing || 0, required: p.required || 0,
+        price, currency: 'Bs', deposit, photo,
       };
     });
-    saveCatalog(cat);
     onImport(products);
     setPreview(null); setText('');
     onClose();
   }
-
   return (
     <ModalShell visible={visible} title="Importar CSV" onClose={onClose} maxWidth={480}>
       <Text style={ui.label}>Depósito destino</Text>
@@ -114,7 +109,6 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
     </ModalShell>
   );
 }
-
 const st = StyleSheet.create({
   area: { borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, minHeight: 110, padding: 10, fontSize: 12, color: colors.ink, textAlignVertical: 'top', marginBottom: 10, backgroundColor: colors.surface },
   btnParse: { backgroundColor: colors.teal, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center', marginBottom: 10 },

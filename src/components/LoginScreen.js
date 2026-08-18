@@ -9,11 +9,11 @@ export default function LoginScreen({ onLogin }) {
   const [pass, setPass] = useState('');
   const [error, setError] = useState('');
 
-  function entrar() {
-    const s = checkLogin(user, pass);
-    if (!s) { setError('Usuario o contraseña incorrectos.'); return; }
-    onLogin(s);
-  }
+  async function entrar() {
+  const s = await checkLogin(user, pass);
+  if (!s) { setError('Usuario o contraseña incorrectos.'); return; }
+  onLogin(s);
+}
 
   return (
     <View style={st.root}>

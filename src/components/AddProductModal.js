@@ -5,7 +5,7 @@ import { ui } from '../styles';
 import { IconCamara } from './BoxIcon';
 import { pickFromLibrary, takePhoto } from '../utils/photos';
 import PhotoChooserPanel from './PhotoChooserPanel';
-import { loadCatalog, saveCatalog, loadUnits, saveUnits } from '../utils/storage';
+import { getCatalog, upsertCatalog, getUnits, createUnit } from '../utils/api';
 import ModalShell from './ModalShell';
 
 const sanitizeName = (t) => t.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\/\.\-\(\)]/g, '');
@@ -32,8 +32,8 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
 
   useEffect(() => {
     if (visible) {
-      loadCatalog().then(setCatalog);
-      loadUnits().then(setUnits);
+      getCatalog().then(setCatalog);
+      getUnits().then(setUnits);
       if (fixedDeposit && DEPOSITOS.includes(fixedDeposit)) setDeposit(fixedDeposit);
     }
   }, [visible, fixedDeposit]);
@@ -51,13 +51,12 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
 
   function closeLists() { setNameFocused(false); setCatFocused(false); setShowUnits(false); }
   const stop = { onMouseDown: (e) => e.stopPropagation(), onTouchStart: (e) => e.stopPropagation() };
-
   const q = name.trim().toUpperCase();
   const ordenado = [...catalog].sort((a, b) => a.name.localeCompare(b.name, 'es'));
   const sugs = !nameFocused ? [] : (q
     ? ordenado
-      .filter(c => c.name.toUpperCase().includes(q) && c.name.toUpperCase() !== q)
-      .sort((a, b) => (a.name.toUpperCase().startsWith(q) ? 0 : 1) - (b.name.toUpperCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name, 'es'))
+        .filter(c => c.name.toUpperCase().includes(q) && c.name.toUpperCase() !== q)
+        .sort((a, b) => (a.name.toUpperCase().startsWith(q) ? 0 : 1) - (b.name.toUpperCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name, 'es'))
     : ordenado).slice(0, 100);
   const allCats = Array.from(new Set(catalog.map(c => (c.cat || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'));
   const catSugs = !catFocused ? [] : allCats.filter(c => c.toLowerCase().includes(catText.trim().toLowerCase()) && c.toLowerCase() !== catText.trim().toLowerCase());
@@ -87,22 +86,14 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
   }
   function pickCat(c) { setCatText(c); setCatFocused(false); clearError('cat'); }
   function pickUnit(u) { setUnit(u); setUnitSearch(u); setShowUnits(false); clearError('unit'); }
-  function persistUnit(u) {
-    setUnits(prev => {
-      if (prev.some(x => x.toLowerCase() === u.toLowerCase())) return prev;
-      const next = [...prev, u];
-      saveUnits(next);
-      return next;
-    });
-  }
+
   function handleSave() {
     const errs = {};
     const trimmed = name.trim();
     const n = parseInt(qty, 10) || 0;
     const finalUnit = (unit || unitSearch).trim();
     const finalCat = catText.trim();
-    const cat = [...catalog];
-    const exCat = cat.find(c => (c.name || '').toUpperCase() === trimmed.toUpperCase());
+    const exCat = catalog.find(c => (c.name || '').toUpperCase() === trimmed.toUpperCase());
     const finalPhoto = photo || (exCat && exCat.photo) || null;
     if (trimmed.length <= 4) errs.name = '⚠ El nombre debe tener más de 4 letras.';
     if (!finalCat) errs.cat = '⚠ Selecciona o escribe una categoría.';
@@ -112,15 +103,18 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
     setErrors(errs);
     if (Object.values(errs).some(Boolean)) return;
     const category = /herramient/i.test(finalCat) ? 'herramienta' : 'material';
-    if (exCat) {
-      exCat.unit = finalUnit; exCat.type = category; exCat.cat = finalCat;
-      if (finalPhoto) exCat.photo = finalPhoto;
-      if (requirePrice) exCat.price = parseFloat(price) || exCat.price;
-    } else {
-      cat.push({ name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto });
-    }
-    saveCatalog(cat); setCatalog(cat);
-    persistUnit(finalUnit);
+    // ✅ Todo va al BACK (tablas catalogo y unidades)
+    upsertCatalog({ name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto });
+    createUnit(finalUnit);
+    setCatalog(prev => {
+      const i = prev.findIndex(c => (c.name || '').toUpperCase() === trimmed.toUpperCase());
+      if (i >= 0) {
+        const nxt = [...prev];
+        nxt[i] = { ...nxt[i], unit: finalUnit, cat: finalCat, type: category, photo: finalPhoto || nxt[i].photo, price: requirePrice ? (parseFloat(price) || nxt[i].price) : nxt[i].price };
+        return nxt;
+      }
+      return [...prev, { name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto }];
+    });
     onSave({
       name: trimmed, qty: requirePrice ? 0 : n, required: requirePrice ? n : 0,
       unit: finalUnit, cat: finalCat, category, photo: finalPhoto,
@@ -148,18 +142,14 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
           </>
         )}
         <Text style={ui.label}>Categoría</Text>
-        <TextInput
-          style={[ui.input, errors.cat && ui.inputError]}
-          value={catText}
+        <TextInput style={[ui.input, errors.cat && ui.inputError]} value={catText}
           onChangeText={t => { setCatText(sanitizeCat(t)); setCatFocused(true); setNameFocused(false); setShowUnits(false); clearError('cat'); }}
           onFocus={() => { setCatFocused(true); setNameFocused(false); setShowUnits(false); }}
-          placeholder="Ej. Inventario DRT, Fibra Óptica..." placeholderTextColor={colors.steel}
-        />
+          placeholder="Ej. Inventario DRT, Fibra Óptica..." placeholderTextColor={colors.steel} />
         {catSugs.length > 0 && (
           <ScrollView {...stop} style={[ui.dropdown, { maxHeight: 180, zIndex: 10 }]} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
             {catSugs.map(c => (
-              <TouchableOpacity key={c} style={ui.listItem} activeOpacity={0.7}
-                onMouseDown={() => pickCat(c)} onPress={() => pickCat(c)}>
+              <TouchableOpacity key={c} style={ui.listItem} activeOpacity={0.7} onMouseDown={() => pickCat(c)} onPress={() => pickCat(c)}>
                 <Text style={ui.listItemText}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -167,13 +157,10 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
         )}
         {errors.cat ? <Text style={ui.errorText}>{errors.cat}</Text> : null}
         <Text style={ui.label}>Nombre</Text>
-        <TextInput
-          style={[ui.input, errors.name && ui.inputError]}
-          value={name}
+        <TextInput style={[ui.input, errors.name && ui.inputError]} value={name}
           onChangeText={t => { setName(sanitizeName(t)); setNameFocused(true); setCatFocused(false); setShowUnits(false); clearError('name'); }}
           onFocus={() => { setNameFocused(true); setCatFocused(false); setShowUnits(false); }}
-          placeholder="Ej. Tornillos 3/8" placeholderTextColor={colors.steel}
-        />
+          placeholder="Ej. Tornillos 3/8" placeholderTextColor={colors.steel} />
         {nameFocused && catalog.length === 0 && (
           <View {...stop} style={ui.dropdown}>
             <Text style={ui.emptyHint}>Aún no hay nombres guardados.{'\n'}Aparecen al guardar productos o importar el CSV.</Text>
@@ -183,8 +170,7 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
           <ScrollView style={[ui.dropdown, { maxHeight: 180, zIndex: 10 }]} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled"
             onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }} onTouchStart={e => e.stopPropagation()}>
             {sugs.map(c => (
-              <TouchableOpacity key={c.name} style={ui.listItem} activeOpacity={0.7}
-                onMouseDown={() => pickSug(c)} onPress={() => pickSug(c)}>
+              <TouchableOpacity key={c.name} style={ui.listItem} activeOpacity={0.7} onMouseDown={() => pickSug(c)} onPress={() => pickSug(c)}>
                 <Text style={ui.listItemText}>{c.name}</Text>
               </TouchableOpacity>
             ))}
@@ -194,25 +180,19 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
         <Text style={ui.label}>{requirePrice ? 'Cantidad requerida' : 'Cantidad'}</Text>
         <View style={st.qtyRow}>
           <TouchableOpacity style={st.qtyBtn} onPress={() => adjustQty(-1)}><Text style={st.qtyBtnText}>−</Text></TouchableOpacity>
-          <TextInput
-            style={[st.qtyInput, errors.qty && ui.inputError]}
-            value={qty}
+          <TextInput style={[st.qtyInput, errors.qty && ui.inputError]} value={qty}
             onChangeText={t => { setQty(t.replace(/[^0-9]/g, '')); clearError('qty'); }}
             onFocus={() => { closeLists(); if (qty === '0') setQty(''); }}
             onBlur={() => { if (qty === '') setQty('0'); }}
-            keyboardType="number-pad"
-          />
+            keyboardType="number-pad" />
           <TouchableOpacity style={[st.qtyBtn, st.qtyBtnPlus]} onPress={() => adjustQty(1)}><Text style={st.qtyBtnText}>+</Text></TouchableOpacity>
         </View>
         {errors.qty ? <Text style={ui.errorText}>{errors.qty}</Text> : null}
         <Text style={ui.label}>Unidad</Text>
-        <TextInput
-          style={[ui.input, errors.unit && ui.inputError]}
-          value={unitSearch}
+        <TextInput style={[ui.input, errors.unit && ui.inputError]} value={unitSearch}
           onChangeText={t => { setUnitSearch(sanitizeUnit(t)); setUnit(''); setShowUnits(true); setNameFocused(false); setCatFocused(false); clearError('unit'); }}
           onFocus={() => { setShowUnits(true); setNameFocused(false); setCatFocused(false); }}
-          placeholder="Buscar unidad (ej. Bolsa)" placeholderTextColor={colors.steel}
-        />
+          placeholder="Buscar unidad (ej. Bolsa)" placeholderTextColor={colors.steel} />
         {showUnits && filteredUnits.length === 0 && unitSearch.trim() === '' && (
           <View {...stop} style={ui.dropdown}>
             <Text style={ui.emptyHint}>No hay unidades guardadas todavía.{'\n'}Escribe una y toca "Usar ...", o importa el CSV.</Text>
@@ -221,14 +201,12 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
         {showUnitList && (
           <ScrollView {...stop} style={[ui.dropdown, { maxHeight: 160 }]} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
             {filteredUnits.map(u => (
-              <TouchableOpacity key={u} style={ui.listItem} activeOpacity={0.7}
-                onMouseDown={() => pickUnit(u)} onPress={() => pickUnit(u)}>
+              <TouchableOpacity key={u} style={ui.listItem} activeOpacity={0.7} onMouseDown={() => pickUnit(u)} onPress={() => pickUnit(u)}>
                 <Text style={ui.listItemText}>{u}</Text>
               </TouchableOpacity>
             ))}
             {unitSearch.trim() !== '' && filteredUnits.length === 0 && (
-              <TouchableOpacity style={ui.listItem} activeOpacity={0.7}
-                onMouseDown={() => pickUnit(unitSearch.trim())} onPress={() => pickUnit(unitSearch.trim())}>
+              <TouchableOpacity style={ui.listItem} activeOpacity={0.7} onMouseDown={() => pickUnit(unitSearch.trim())} onPress={() => pickUnit(unitSearch.trim())}>
                 <Text style={[ui.listItemText, { color: colors.teal }]}>Usar "{unitSearch.trim()}"</Text>
               </TouchableOpacity>
             )}
@@ -242,8 +220,7 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
               <TouchableOpacity style={ui.currBtn} onPress={() => setCurrency(c => c === 'Bs' ? '$us' : 'Bs')}>
                 <Text style={ui.currText}>{currency === 'Bs' ? 'Bs' : '$us'}</Text>
               </TouchableOpacity>
-              <TextInput style={ui.priceInput} value={price}
-                onFocus={() => closeLists()}
+              <TextInput style={ui.priceInput} value={price} onFocus={() => closeLists()}
                 onChangeText={t => setPrice(t.replace(/[^0-9.]/g, ''))} placeholder="0.00" placeholderTextColor={colors.steel} keyboardType="numeric" />
             </View>
           </>
@@ -268,7 +245,6 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
     </ModalShell>
   );
 }
-
 const st = StyleSheet.create({
   qtyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
   qtyBtn: { width: 40, height: 40, borderRadius: 4, borderWidth: 2, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface, flexShrink: 0 },
