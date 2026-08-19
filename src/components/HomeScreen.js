@@ -5,10 +5,11 @@ import { IconCaja, IconAlerta, IconSalida, IconStock, IconUsuario, IconSalir } f
 
 export default function HomeScreen({ products, onNavigate, session, onLogout }) {
   const isAdmin = session && session.rol === 'admin';
-  const totales = products.length;
+  // ✅ Registro y Stock cuentan solo los depósitos reales (no los faltantes en "General")
+  const totales = products.filter(p => p.deposit !== 'General').length;
   const conStock = products.filter(p => p.qty > 0).length;
-  const faltantes = products.filter(p => p.qty === 0).length;
-
+  // ✅ Faltantes = solo los que TÚ marcaste o importaste
+  const faltantes = products.filter(p => p.faltante === true).length;
   const Card = ({ onPress, icon, title, desc, badge, badgeColor }) => (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.cardTop}>
@@ -21,7 +22,6 @@ export default function HomeScreen({ products, onNavigate, session, onLogout }) 
       </View>
     </TouchableOpacity>
   );
-
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
       <View style={styles.header}>

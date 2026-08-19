@@ -1,18 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { colors, radius, DEPOSITOS } from '../theme';
 import { ui } from '../styles';
 import ModalShell from './ModalShell';
 import { getCatalog, upsertCatalog } from '../utils/api';
 
-const MAT_KW = ['CABLE','JACK','RJ-','PATCH','CINTA','GRAPA','TOMA','CANAL','PISO','CONO','LINTERNA','PIGTAIL','ADAPTADOR','SOPORTE','MALLA','ABRAZADERA','CRUCETA','RACK','FIBRA','MUFLA','BANDEJA','CTO','GPON','TRANSEIVER','PDU','CAJA','CONECTOR','BIPOLAR','TELEFON','COAXIAL','UTP','HDMI','TORNILLO','PILA','BATERIA','RAM','LICENCIA','FIREWALL','CERTIFICADO','DOMINIO'];
-function guessType(name, cat) {
-  const c = (cat || '').toLowerCase();
-  if (c.includes('herramient')) return 'herramienta';
-  if (!c.includes('drt')) return 'material';
-  const n = (name || '').toUpperCase();
-  return MAT_KW.some(k => n.includes(k)) ? 'material' : 'herramienta';
-}
 const num = (v) => {
   let s = String(v || '').trim(); if (!s) return 0;
   if (s.includes('.') && s.includes(',')) s = s.replace(/,/g, '');
@@ -20,6 +12,7 @@ const num = (v) => {
   s = s.replace(/[^0-9.-]/g, '');
   const n = parseFloat(s); return isNaN(n) ? 0 : n;
 };
+
 function parseCSV(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (!lines.length) return [];
@@ -30,12 +23,24 @@ function parseCSV(text) {
   const start = hi >= 0 ? hi + 1 : 0;
   const head = hi >= 0 ? rows[hi].map(h => h.toLowerCase()) : [];
   const idx = (k) => head.findIndex(h => h.includes(k));
-  const iCat = idx('categor'), iDesc = idx('descrip'), iUni = idx('unidad'), iReq = idx('requerida'), iExi = idx('existente'), iCost = idx('costo');
+  let iCat = idx('categor'), iDesc = idx('descrip'), iUni = idx('unidad'), iReq = idx('requerida'), iExi = idx('existente'), iCost = idx('costo');
+
+  // ✅ SIN ENCABEZADO: detecta columnas por posición (formato Excel con o sin "N°")
+  if (iDesc < 0 && rows.length) {
+    const r0 = (rows[0] || []).slice();
+    while (r0.length && r0[r0.length - 1] === '') r0.pop(); // quita celdas vacías del final
+    const off = /^\d{1,4}$/.test((r0[0] || '').trim()) ? 1 : 0; // ¿empieza con N°?
+    const nCols = r0.length;
+    iCat = off; iDesc = off + 1; iUni = off + 2;
+    if (nCols >= off + 6) { iExi = off + 3; iReq = off + 4; iCost = off + 5; }      // hoja "Inventario" (con existente)
+    else { iExi = -1; iReq = off + 3; iCost = off + 4; }                            // hoja "Requerido" (sin existente)
+  }
+
   const out = [];
   for (let i = start; i < rows.length; i++) {
     const r = rows[i];
     const name = (iDesc >= 0 ? r[iDesc] : r[2]) || '';
-    if (!name || /descrip/i.test(name)) continue;
+    if (!name || /descrip/i.test(name) || /^[-—]+$/.test(name)) continue;
     out.push({
       cat: (iCat >= 0 ? r[iCat] : r[1]) || 'Materiales', name,
       unit: ((iUni >= 0 ? r[iUni] : r[3]) || 'PIEZA').toUpperCase(),
@@ -53,7 +58,10 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
   const [preview, setPreview] = useState(null);
   const [catalog, setCatalog] = useState([]);
   useEffect(() => {
-    if (visible) { getCatalog().then(setCatalog); if (initialDeposit) setDeposit(initialDeposit); }
+    if (visible) {
+      getCatalog().then(setCatalog).catch(() => {});
+      if (initialDeposit) setDeposit(initialDeposit);
+    }
   }, [visible, initialDeposit]);
   function handleFile(e) {
     const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -69,9 +77,10 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
       const price = p.price || (match && match.price) || 0;
       const catFinal = p.cat || (match && match.cat) || 'Materiales';
       const photo = (match && match.photo) || null;
-      upsertCatalog({ name: p.name, unit: p.unit, cat: catFinal, type: guessType(p.name, p.cat), price, photo });
+      upsertCatalog({ name: p.name, unit: p.unit, cat: catFinal, type: (c => (c.includes('herramient') ? 'herramienta' : 'material'))((catFinal || '').toLowerCase()), price, photo }).catch(() => {});
       return {
-        name: p.name, unit: p.unit, category: guessType(p.name, p.cat),
+        name: p.name, unit: p.unit,
+        category: (c => (c.includes('herramient') ? 'herramienta' : 'material'))((catFinal || '').toLowerCase()),
         cat: catFinal, qty: p.existing || 0, required: p.required || 0,
         price, currency: 'Bs', deposit, photo,
       };
@@ -91,8 +100,8 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
         ))}
       </View>
       {Platform.OS === 'web' && <input type="file" accept=".csv,.txt" onChange={handleFile} style={{ marginBottom: 10 }} />}
-      <Text style={ui.label}>O pega el contenido</Text>
-      <TextInput style={st.area} multiline numberOfLines={6} value={text} onChangeText={setText} placeholder="Categoria,Descripcion,Unidad,Cantidad..." />
+      <Text style={ui.label}>O pega el contenido (con o sin encabezados)</Text>
+      <TextInput style={st.area} multiline numberOfLines={6} value={text} onChangeText={setText} placeholder="Categoria;Descripcion;Unidad;Cantidad..." placeholderTextColor={colors.steel} />
       <TouchableOpacity style={st.btnParse} onPress={() => setPreview(parseCSV(text))}><Text style={st.btnParseText}>Vista previa</Text></TouchableOpacity>
       {preview && (
         <ScrollView style={st.prev}>
@@ -109,6 +118,7 @@ export default function CSVImportModal({ visible, onClose, onImport, initialDepo
     </ModalShell>
   );
 }
+
 const st = StyleSheet.create({
   area: { borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, minHeight: 110, padding: 10, fontSize: 12, color: colors.ink, textAlignVertical: 'top', marginBottom: 10, backgroundColor: colors.surface },
   btnParse: { backgroundColor: colors.teal, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center', marginBottom: 10 },

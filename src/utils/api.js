@@ -1,5 +1,4 @@
 export const API_URL = 'http://localhost:3001/api'; // ← tu servidor
-
 async function req(path, method = 'GET', body) {
   const r = await fetch(API_URL + path, {
     method,
@@ -22,3 +21,5 @@ export const createPersona = (name) => req('/personas', 'POST', { name });
 export const importPersonas = (names) => req('/personas/importar', 'POST', { names });
 export const getSalidas = () => req('/salidas');
 export const createSalida = (s) => req('/salidas', 'POST', s);
+export const getCategorias = () => req('/categorias');                                              // ✅ nuevo
+export const createCategoria = (name, color) => req('/categorias', 'POST', { name, color });        // ✅ nuevo

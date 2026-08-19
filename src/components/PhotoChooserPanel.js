@@ -47,6 +47,7 @@ const DICC = {
   router: ['router'],
   onu: ['ONU GPON'],
 };
+
 function queriesFor(q) {
   const low = q.toLowerCase();
   const list = [];
@@ -56,6 +57,7 @@ function queriesFor(q) {
   list.push(q);
   return list;
 }
+
 async function searchGoogle(q) {
   const url = 'https://www.googleapis.com/customsearch/v1?key=' + GOOGLE_API_KEY + '&cx=' + GOOGLE_CX + '&searchType=image&num=20&safe=active&q=' + encodeURIComponent(q);
   const res = await fetch(url);
@@ -64,6 +66,7 @@ async function searchGoogle(q) {
     .filter(it => it.link && /^https?:/.test(it.link))
     .map(it => ({ thumb: (it.image && (it.image.thumbnailLink || it.link)) || it.link }));
 }
+
 // ✅ FUENTE PRINCIPAL SIN CLAVES: DuckDuckGo Imágenes (índice de Bing = resultados tipo Google)
 async function searchDuckDuckGo(q) {
   const proxies = ['https://api.allorigins.win/raw?url=', 'https://corsproxy.io/?url='];
@@ -92,6 +95,7 @@ async function searchDuckDuckGo(q) {
   }
   return [];
 }
+
 // Respaldo: biblioteca libre, solo fotos reales (JPEG/PNG)
 async function searchWikimedia(q) {
   const url = 'https://commons.wikimedia.org/w/api.php'
@@ -109,7 +113,7 @@ async function searchWikimedia(q) {
     .map(ii => ({ thumb: ii.thumburl || ii.url }));
 }
 
-export default function PhotoChooserPanel({ visible, onClose, onPickCamera, onPickLibrary, onPickWeb, initialQuery = '', title = 'Elegir foto' }) {
+export default function PhotoChooserPanel({ visible, onClose, onPickCamera, onPickLibrary, onPickWeb, initialQuery = '', title = 'Elegir foto', inline = false }) {
   const [mode, setMode] = useState('menu');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -142,89 +146,112 @@ export default function PhotoChooserPanel({ visible, onClose, onPickCamera, onPi
     }
     setLoading(false);
   }
+
   function openWeb() {
     setMode('web');
     setQuery(initialQuery || '');
     if ((initialQuery || '').trim()) doSearch(initialQuery);
   }
+
   function pick(item) {
     if (onPickWeb) onPickWeb(item.thumb);
     onClose();
   }
 
-  return (
-    <ModalShell visible={visible} title={mode === 'web' ? 'Buscar imagen en Internet' : title} onClose={onClose} maxWidth={mode === 'web' ? 560 : 320} scroll={false} closeOnOverlay>
-      {mode === 'menu' ? (
-        <View>
-          {Platform.OS !== 'web' && (
-            <TouchableOpacity style={st.opt} onPress={onPickCamera}>
-              <View style={st.optInner}><IconCamara color={colors.ink} /><Text style={st.optText}>Tomar foto</Text></View>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={st.opt} onPress={onPickLibrary}>
-            <View style={st.optInner}><IconImagen color={colors.ink} /><Text style={st.optText}>Subir imagen</Text></View>
-          </TouchableOpacity>
-          {onPickWeb ? (
-            <TouchableOpacity style={st.opt} onPress={openWeb}>
-              <View style={st.optInner}><IconBuscar color={colors.ink} /><Text style={st.optText}>Buscar en Internet</Text></View>
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity style={st.close} onPress={onClose}><Text style={st.closeText}>Cancelar</Text></TouchableOpacity>
+  if (!visible) return null;
+
+  const content = mode === 'menu' ? (
+    <View>
+      {Platform.OS !== 'web' && (
+        <TouchableOpacity style={st.opt} onPress={onPickCamera}>
+          <View style={st.optInner}><IconCamara color={colors.ink} /><Text style={st.optText}>Tomar foto</Text></View>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={st.opt} onPress={onPickLibrary}>
+        <View style={st.optInner}><IconImagen color={colors.ink} /><Text style={st.optText}>Subir imagen</Text></View>
+      </TouchableOpacity>
+      {onPickWeb ? (
+        <TouchableOpacity style={st.opt} onPress={openWeb}>
+          <View style={st.optInner}><IconBuscar color={colors.ink} /><Text style={st.optText}>Buscar en Internet</Text></View>
+        </TouchableOpacity>
+      ) : null}
+      <TouchableOpacity style={st.close} onPress={onClose}><Text style={st.closeText}>Cancelar</Text></TouchableOpacity>
+    </View>
+  ) : (
+    <View>
+      <View style={st.row}>
+        <TextInput style={st.input} value={query} onChangeText={setQuery}
+          placeholder="Ej. cablecanal 100x50, abrazadera..." placeholderTextColor={colors.steel}
+          onSubmitEditing={() => doSearch(query)} returnKeyType="search" />
+        <TouchableOpacity style={st.btnSearch} onPress={() => doSearch(query)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <IconBuscar color="#fff" /><Text style={st.btnSearchText}>Buscar</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+      {loading ? (
+        <View style={st.center}>
+          <ActivityIndicator color={colors.teal} />
+          <Text style={st.hint}>Buscando imágenes...</Text>
         </View>
       ) : (
-        <View>
-          <View style={st.row}>
-            <TextInput style={st.input} value={query} onChangeText={setQuery}
-              placeholder="Ej. cablecanal 100x50, abrazadera..." placeholderTextColor={colors.steel}
-              onSubmitEditing={() => doSearch(query)} returnKeyType="search" />
-            <TouchableOpacity style={st.btnSearch} onPress={() => doSearch(query)}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <IconBuscar color="#fff" /><Text style={st.btnSearchText}>Buscar</Text>
-              </View>
-            </TouchableOpacity>
+        <ScrollView style={st.grid} nestedScrollEnabled={true}>
+          <View style={st.gridInner}>
+            {results.map((it, i) => (
+              <TouchableOpacity key={i} style={st.cell} onPress={() => pick(it)}>
+                <Image source={{ uri: it.thumb }} style={st.thumb} resizeMode="cover" />
+              </TouchableOpacity>
+            ))}
           </View>
-          {loading ? (
-            <View style={st.center}>
-              <ActivityIndicator color={colors.teal} />
-              <Text style={st.hint}>Buscando imágenes...</Text>
-            </View>
-          ) : (
-            <ScrollView style={st.grid} nestedScrollEnabled={true}>
-              <View style={st.gridInner}>
-                {results.map((it, i) => (
-                  <TouchableOpacity key={i} style={st.cell} onPress={() => pick(it)}>
-                    <Image source={{ uri: it.thumb }} style={st.thumb} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {error ? <Text style={st.error}>{error}</Text> : null}
-              {!error && results.length === 0 ? (
-                <Text style={st.hint}>Escribe qué material buscas y toca "Buscar".</Text>
-              ) : null}
-            </ScrollView>
-          )}
-          <TouchableOpacity style={st.close} onPress={() => setMode('menu')}><Text style={st.closeText}>← Volver</Text></TouchableOpacity>
-        </View>
+          {error ? <Text style={st.error}>{error}</Text> : null}
+          {!error && results.length === 0 ? (
+            <Text style={st.hint}>Escribe qué material buscas y toca "Buscar".</Text>
+          ) : null}
+        </ScrollView>
       )}
+      <TouchableOpacity style={st.close} onPress={() => setMode('menu')}><Text style={st.closeText}>← Volver</Text></TouchableOpacity>
+    </View>
+  );
+
+  // ✅ MODO INLINE: vive DENTRO de la tarjeta y se despliega HACIA ARRIBA
+  if (inline) {
+    return (
+      <View style={st.inlineWrap}>
+        <View style={st.inlineCard}>
+          <Text style={st.inlineTitle}>{mode === 'web' ? 'Buscar imagen' : title}</Text>
+          {content}
+        </View>
+      </View>
+    );
+  }
+
+  // Modo modal clásico (lo sigue usando AddProductModal)
+  return (
+    <ModalShell visible={visible} title={mode === 'web' ? 'Buscar imagen en Internet' : title} onClose={onClose} maxWidth={mode === 'web' ? 560 : 320} scroll={false} closeOnOverlay>
+      {content}
     </ModalShell>
   );
 }
 
 const st = StyleSheet.create({
-  opt: { borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, paddingVertical: 12, alignItems: 'center', marginBottom: 10, backgroundColor: colors.surface },
+  opt: { borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center', marginBottom: 8, backgroundColor: colors.surface },
   optInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  optText: { fontWeight: '700', fontSize: 13, color: colors.ink },
-  close: { paddingVertical: 10, alignItems: 'center' },
-  closeText: { fontSize: 12, fontWeight: '700', color: colors.steel, textTransform: 'uppercase' },
-  row: { flexDirection: 'row', marginBottom: 10, gap: 8 },
-  input: { flex: 1, borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, paddingVertical: 10, paddingHorizontal: 12, fontSize: 13, color: colors.ink, backgroundColor: colors.surface },
-  btnSearch: { backgroundColor: colors.teal, borderRadius: radius.sm, paddingHorizontal: 14, justifyContent: 'center' },
-  btnSearchText: { color: '#fff', fontWeight: '800', fontSize: 12, textTransform: 'uppercase' },
-  grid: { maxHeight: 320 },
-  gridInner: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cell: { width: '31%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', borderWidth: 2, borderColor: colors.line },
+  optText: { fontWeight: '700', fontSize: 12, color: colors.ink },
+  close: { paddingVertical: 8, alignItems: 'center' },
+  closeText: { fontSize: 11, fontWeight: '700', color: colors.steel, textTransform: 'uppercase' },
+  row: { flexDirection: 'row', marginBottom: 8, gap: 6 },
+  input: { flex: 1, borderWidth: 2, borderColor: colors.ink, borderRadius: radius.sm, paddingVertical: 8, paddingHorizontal: 10, fontSize: 12, color: colors.ink, backgroundColor: colors.surface },
+  btnSearch: { backgroundColor: colors.teal, borderRadius: radius.sm, paddingHorizontal: 12, justifyContent: 'center' },
+  btnSearchText: { color: '#fff', fontWeight: '800', fontSize: 11, textTransform: 'uppercase' },
+  grid: { maxHeight: 200 },
+  gridInner: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  cell: { width: '30%', aspectRatio: 1, borderRadius: 6, overflow: 'hidden', borderWidth: 2, borderColor: colors.line, backgroundColor: colors.hole },
   thumb: { width: '100%', height: '100%' },
-  center: { paddingVertical: 30, alignItems: 'center' },
-  hint: { fontSize: 12, color: colors.steel, textAlign: 'center', marginTop: 8 },
-  error: { fontSize: 12, color: colors.rust, fontWeight: '700', textAlign: 'center', marginTop: 8 },
+  center: { paddingVertical: 24, alignItems: 'center' },
+  hint: { fontSize: 11, color: colors.steel, textAlign: 'center', marginTop: 6 },
+  error: { fontSize: 11, color: colors.rust, fontWeight: '700', textAlign: 'center', marginTop: 6 },
+  // ✅ Panel inline: anclado abajo dentro de la tarjeta → crece hacia arriba
+  inlineWrap: { position: 'absolute', bottom: 8, left: -2, right: -2, zIndex: 90, elevation: 12 },
+  inlineCard: { backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.ink, borderRadius: radius.md, padding: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 12 },
+  inlineTitle: { fontSize: 11, fontWeight: '800', color: colors.teal, textTransform: 'uppercase', marginBottom: 6, textAlign: 'center' },
 });

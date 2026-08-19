@@ -10,7 +10,10 @@ import CSVPreviewModal from './CSVPreviewModal';
 import CSVImportModal from './CSVImportModal';
 import ReportButton from './ReportButton';
 import { byName, byCat, monthInfo, catColor, useCols, catsOf, fixTab, filterItems } from '../utils/helpers';
+
 const localDateStr = (iso) => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const fmtDay = (d) => d.split('-').reverse().join('/');
+
 function DepositCard({ name, n, onPress }) {
   return (
     <TouchableOpacity style={ui.bigCard} onPress={onPress} activeOpacity={0.85}>
@@ -25,6 +28,7 @@ function DepositCard({ name, n, onPress }) {
     </TouchableOpacity>
   );
 }
+
 export default function AlmacenScreen({ products, onBack, onAdd, onRename, onChangeQty, onSetQty, onChangePhoto, onDelete }) {
   const [deposit, setDeposit] = useState(null);
   const [search, setSearch] = useState('');
@@ -36,6 +40,7 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
   const [dateTo, setDateTo] = useState('');
   const cols = useCols();
   const count = (d) => products.filter(p => p.deposit === d).length;
+
   if (!deposit) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -50,16 +55,30 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
       </View>
     );
   }
+
   const hasDateFilter = !!(dateFrom || dateTo);
   const inRange = (p) => { if (!hasDateFilter) return true; const dstr = localDateStr(p.createdAt); if (!dstr) return false; if (dateFrom && dstr < dateFrom) return false; if (dateTo && dstr > dateTo) return false; return true; };
   const depositProducts = products.filter(p => p.deposit === deposit);
   const cats = catsOf(depositProducts);
   const effectiveTab = fixTab(tab, cats);
   const filtered = filterItems(depositProducts, effectiveTab, search).filter(inRange);
+
+  // ✅ MES → CATEGORÍA → DÍA (historial por fecha de cada carga)
   const gmap = {};
   filtered.forEach(p => { const m = monthInfo(p.createdAt); const k = m ? m.key : 'sinfecha'; if (!gmap[k]) gmap[k] = { key: k, label: m ? m.label : 'SIN FECHA', items: [] }; gmap[k].items.push(p); });
   const monthGroups = Object.values(gmap).sort((a, b) => { if (a.key === 'sinfecha') return 1; if (b.key === 'sinfecha') return -1; return a.key < b.key ? -1 : 1; });
-  monthGroups.forEach(g => { g.items.sort(byName); const cmap = {}; g.items.forEach(i => { const c = i.cat || 'Sin categoría'; (cmap[c] = cmap[c] || []).push(i); }); g.catGroups = Object.keys(cmap).sort(byCat).map(c => ({ cat: c, items: cmap[c] })); });
+  monthGroups.forEach(g => {
+    const cmap = {};
+    g.items.forEach(i => { const c = i.cat || 'Sin categoría'; (cmap[c] = cmap[c] || []).push(i); });
+    g.catGroups = Object.keys(cmap).sort(byCat).map(c => {
+      const dmap = {};
+      cmap[c].forEach(i => { const d = localDateStr(i.createdAt) || 'sinfecha'; (dmap[d] = dmap[d] || []).push(i); });
+      const dayGroups = Object.keys(dmap).sort((a, b) => (a === 'sinfecha' ? 1 : b === 'sinfecha' ? -1 : b.localeCompare(a)))
+        .map(d => ({ day: d, items: dmap[d].sort(byName) }));
+      return { cat: c, dayGroups, total: cmap[c].length };
+    });
+  });
+
   const totalDep = depositProducts.length;
   const webDateStyle = { borderWidth: 2, borderColor: colors.white, borderRadius: 6, padding: '4px 6px', backgroundColor: colors.surface, color: colors.ink, fontSize: 12 };
   const renderGrid = (items) => (
@@ -67,6 +86,7 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
       {items.map(item => (<View key={item.id} style={{ width: `${100 / cols}%` }}><ProductCard product={item} onRename={onRename} onChangeQty={onChangeQty} onSetQty={onSetQty} onChangePhoto={onChangePhoto} onDelete={onDelete} /></View>))}
     </View>
   );
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScreenHeader style={ui.headerTeal} onBack={() => setDeposit(null)} backLabel="← Depósitos" title={`DEPÓSITO ${deposit.toUpperCase()}`}
@@ -98,8 +118,13 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
               <View style={st.monthHeader}><Text style={st.monthTitle}>{g.label.toUpperCase()}</Text><Text style={st.monthCount}>{g.items.length} registro(s)</Text></View>
               {g.catGroups.map(cg => (
                 <View key={cg.cat}>
-                  <View style={[st.typeHeader, { backgroundColor: catColor(cg.cat) }]}><Text style={st.typeHeaderText}>{cg.cat.toUpperCase()} ({cg.items.length})</Text></View>
-                  {renderGrid(cg.items)}
+                  <View style={[st.typeHeader, { backgroundColor: catColor(cg.cat) }]}><Text style={st.typeHeaderText}>{cg.cat.toUpperCase()} ({cg.total})</Text></View>
+                  {cg.dayGroups.map(dg => (
+                    <View key={dg.day}>
+                      <Text style={st.dayHeader}>📅 {dg.day === 'sinfecha' ? 'SIN FECHA' : fmtDay(dg.day)}</Text>
+                      {renderGrid(dg.items)}
+                    </View>
+                  ))}
                 </View>
               ))}
             </View>
@@ -113,6 +138,7 @@ export default function AlmacenScreen({ products, onBack, onAdd, onRename, onCha
     </View>
   );
 }
+
 const st = StyleSheet.create({
   importBtnText: { color: colors.teal, fontWeight: '800', fontSize: 11 },
   dateRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 6, gap: 6 },
@@ -125,5 +151,6 @@ const st = StyleSheet.create({
   monthCount: { fontSize: 11, color: colors.steel, fontWeight: '700' },
   typeHeader: { borderRadius: 4, paddingVertical: 4, paddingHorizontal: 10, alignSelf: 'flex-start', marginVertical: 6 },
   typeHeaderText: { color: colors.white, fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  dayHeader: { fontSize: 11, fontWeight: '800', color: colors.steel, letterSpacing: 1, marginVertical: 4, marginLeft: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
 });

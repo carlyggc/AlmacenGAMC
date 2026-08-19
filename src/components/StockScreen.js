@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, StyleSheet } from 'react-native';
 import { colors } from '../theme';
 import { ui } from '../styles';
 import ScreenHeader from './ScreenHeader';
@@ -9,6 +9,7 @@ import CSVPreviewModal from './CSVPreviewModal';
 import ModalShell from './ModalShell';
 import ReportButton from './ReportButton';
 import { useCols, catsOf, fixTab, filterItems, groupByName } from '../utils/helpers';
+
 export default function StockScreen({ products, onBack, onMarkFaltante }) {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('todos');
@@ -31,17 +32,28 @@ export default function StockScreen({ products, onBack, onMarkFaltante }) {
       {groups.length === 0 ? (
         <View style={ui.empty}><View style={{ marginBottom: 10 }}><IconCaja /></View><Text style={ui.emptyText}>No hay productos con stock.</Text></View>
       ) : (
-        <FlatList data={groups} numColumns={cols} key={'col' + cols} keyExtractor={i => i.name} contentContainerStyle={ui.list}
-          renderItem={({ item }) => (
-            <CardShell cat={item.cat} photo={item.photo} name={item.name}>
-              <View style={ui.qtyBox}><Text style={ui.qtyNum}>{item.total}</Text></View>
-              <Text style={ui.qtyLabel}>{item.unit}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                {item.entries.slice().sort((a, b) => (b.qty || 0) - (a.qty || 0)).map(e => (<View key={e.id} style={ui.chip}><Text style={ui.chipText}>{e.deposit}: {e.qty}</Text></View>))}
-              </View>
-              <TouchableOpacity style={ui.markBtn} onPress={() => openMark(item)}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><IconAdvertencia color={colors.rust} /><Text style={ui.markBtnText}>Enviar a Faltante</Text></View></TouchableOpacity>
-            </CardShell>
-          )} />
+        <ScrollView contentContainerStyle={ui.list}>
+          <View style={st.grid}>
+            {groups.map(item => {
+              // ✅ Suma los lotes de cada depósito (600 lunes + 600 miércoles = "Tumusla: 1200")
+              const depMap = {};
+              item.entries.forEach(e => { depMap[e.deposit] = (depMap[e.deposit] || 0) + (e.qty || 0); });
+              const depChips = Object.keys(depMap).map(d => ({ deposit: d, qty: depMap[d] })).sort((a, b) => b.qty - a.qty);
+              return (
+                <View key={item.name} style={{ width: `${100 / cols}%` }}>
+                  <CardShell cat={item.cat} photo={item.photo} name={item.name}>
+                    <View style={ui.qtyBox}><Text style={ui.qtyNum}>{item.total}</Text></View>
+                    <Text style={ui.qtyLabel}>{item.unit}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {depChips.map(e => (<View key={e.deposit} style={ui.chip}><Text style={ui.chipText}>{e.deposit}: {e.qty}</Text></View>))}
+                    </View>
+                    <TouchableOpacity style={ui.markBtn} onPress={() => openMark(item)}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><IconAdvertencia color={colors.rust} /><Text style={ui.markBtnText}>Enviar a Faltante</Text></View></TouchableOpacity>
+                  </CardShell>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
       )}
       {markSel && (
         <ModalShell visible={true} title={`Enviar a Faltante: ${markSel.name}`} onClose={() => setMarkSel(null)} maxWidth={400} scroll={false}>
@@ -57,3 +69,7 @@ export default function StockScreen({ products, onBack, onMarkFaltante }) {
     </View>
   );
 }
+
+const st = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+});

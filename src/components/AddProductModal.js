@@ -5,8 +5,8 @@ import { ui } from '../styles';
 import { IconCamara } from './BoxIcon';
 import { pickFromLibrary, takePhoto } from '../utils/photos';
 import PhotoChooserPanel from './PhotoChooserPanel';
-import { getCatalog, upsertCatalog, getUnits, createUnit } from '../utils/api';
 import ModalShell from './ModalShell';
+import { getCatalog, upsertCatalog, getUnits, createUnit } from '../utils/api';
 
 const sanitizeName = (t) => t.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\/\.\-\(\)]/g, '');
 const sanitizeUnit = (t) => t.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g, '');
@@ -32,8 +32,8 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
 
   useEffect(() => {
     if (visible) {
-      getCatalog().then(setCatalog);
-      getUnits().then(setUnits);
+      getCatalog().then(setCatalog).catch(() => {});
+      getUnits().then(setUnits).catch(() => {});
       if (fixedDeposit && DEPOSITOS.includes(fixedDeposit)) setDeposit(fixedDeposit);
     }
   }, [visible, fixedDeposit]);
@@ -54,9 +54,8 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
   const q = name.trim().toUpperCase();
   const ordenado = [...catalog].sort((a, b) => a.name.localeCompare(b.name, 'es'));
   const sugs = !nameFocused ? [] : (q
-    ? ordenado
-        .filter(c => c.name.toUpperCase().includes(q) && c.name.toUpperCase() !== q)
-        .sort((a, b) => (a.name.toUpperCase().startsWith(q) ? 0 : 1) - (b.name.toUpperCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name, 'es'))
+    ? ordenado.filter(c => c.name.toUpperCase().includes(q) && c.name.toUpperCase() !== q)
+      .sort((a, b) => (a.name.toUpperCase().startsWith(q) ? 0 : 1) - (b.name.toUpperCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name, 'es'))
     : ordenado).slice(0, 100);
   const allCats = Array.from(new Set(catalog.map(c => (c.cat || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'es'));
   const catSugs = !catFocused ? [] : allCats.filter(c => c.toLowerCase().includes(catText.trim().toLowerCase()) && c.toLowerCase() !== catText.trim().toLowerCase());
@@ -76,13 +75,11 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
   function clearError(k) { setErrors(e => ({ ...e, [k]: undefined })); }
   function adjustQty(d) { setQty(p => String(Math.max(0, (parseInt(p, 10) || 0) + d))); clearError('qty'); }
   function pickSug(c) {
-    setName(c.name);
-    setUnit(c.unit); setUnitSearch(c.unit);
+    setName(c.name); setUnit(c.unit); setUnitSearch(c.unit);
     if (c.cat) setCatText(c.cat);
     if (c.photo) setPhoto(c.photo);
     if (requirePrice && c.price) setPrice(String(c.price));
-    setNameFocused(false);
-    clearError('name'); clearError('unit');
+    setNameFocused(false); clearError('name'); clearError('unit');
   }
   function pickCat(c) { setCatText(c); setCatFocused(false); clearError('cat'); }
   function pickUnit(u) { setUnit(u); setUnitSearch(u); setShowUnits(false); clearError('unit'); }
@@ -103,24 +100,26 @@ export default function AddProductModal({ visible, onClose, onSave, showDeposit 
     setErrors(errs);
     if (Object.values(errs).some(Boolean)) return;
     const category = /herramient/i.test(finalCat) ? 'herramienta' : 'material';
-    // ✅ Todo va al BACK (tablas catalogo y unidades)
-    upsertCatalog({ name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto });
-    createUnit(finalUnit);
+    // ✅ Guarda en el catálogo del BACKEND
+    upsertCatalog({ name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto }).catch(() => {});
+    createUnit(finalUnit).catch(() => {});
     setCatalog(prev => {
       const i = prev.findIndex(c => (c.name || '').toUpperCase() === trimmed.toUpperCase());
       if (i >= 0) {
-        const nxt = [...prev];
-        nxt[i] = { ...nxt[i], unit: finalUnit, cat: finalCat, type: category, photo: finalPhoto || nxt[i].photo, price: requirePrice ? (parseFloat(price) || nxt[i].price) : nxt[i].price };
-        return nxt;
+        const nx = [...prev];
+        nx[i] = { ...nx[i], unit: finalUnit, cat: finalCat, type: category, photo: finalPhoto || nx[i].photo, price: requirePrice ? (parseFloat(price) || nx[i].price) : nx[i].price };
+        return nx;
       }
       return [...prev, { name: trimmed, unit: finalUnit, cat: finalCat, type: category, price: requirePrice ? (parseFloat(price) || 0) : 0, photo: finalPhoto }];
     });
+    setUnits(prev => (prev.some(x => x.toLowerCase() === finalUnit.toLowerCase()) ? prev : [...prev, finalUnit]));
     onSave({
-      name: trimmed, qty: requirePrice ? 0 : n, required: requirePrice ? n : 0,
-      unit: finalUnit, cat: finalCat, category, photo: finalPhoto,
-      deposit: showDeposit ? deposit : (fixedDeposit || 'General'),
-      price: requirePrice ? (parseFloat(price) || 0) : 0, currency,
-    });
+  name: trimmed, qty: requirePrice ? 0 : n, required: requirePrice ? n : 0,
+  unit: finalUnit, cat: finalCat, category, photo: finalPhoto,
+  deposit: showDeposit ? deposit : (fixedDeposit || 'General'),
+  price: requirePrice ? (parseFloat(price) || 0) : 0, currency,
+  ...(requirePrice ? { faltante: true } : {}),
+});
     reset();
   }
   async function handlePickCamera() { setPickerVisible(false); const r = await takePhoto(); if (r.error) setErrors(e => ({ ...e, photo: '⚠ ' + r.error })); else if (r.uri) { setPhoto(r.uri); clearError('photo'); } }
