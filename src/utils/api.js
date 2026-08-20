@@ -1,4 +1,5 @@
-export const API_URL = 'http://localhost:3001/api'; // ← tu servidor
+const BASE = process.env.EXPO_PUBLIC_API_URL !== undefined ? process.env.EXPO_PUBLIC_API_URL : 'http://localhost:3001';
+export const API_URL = BASE + '/api';
 async function req(path, method = 'GET', body) {
   const r = await fetch(API_URL + path, {
     method,
