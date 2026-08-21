@@ -13,7 +13,6 @@ import { useCols, catsOf, fixTab, filterItems, groupByName } from '../utils/help
 
 const localDateStr = (iso) => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d.getTime())) return ''; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-// ✅ Historial con foto y (ahora) filtrado por fecha desde la pantalla
 function HistoryModal({ visible, onClose, history, products, rangeLabel }) {
   const fotoDe = (name) => {
     const up = (name || '').trim().toUpperCase();
@@ -63,7 +62,6 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
     .filter(r => r.toLowerCase().includes(recipient.trim().toLowerCase()) && r.toLowerCase() !== recipient.trim().toLowerCase())
     .slice(0, 6);
 
-  // ✅ FILTRO POR FECHA del historial (cuándo salió el material)
   const hasDateFilter = !!(dateFrom || dateTo);
   const inRange = (r) => { if (!hasDateFilter) return true; const d = localDateStr(r.createdAt); if (!d) return false; if (dateFrom && d < dateFrom) return false; if (dateTo && d > dateTo) return false; return true; };
   const historyFiltered = history.filter(inRange);
@@ -82,6 +80,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
     });
   }
 
+  // ✅ Opciones por DEPÓSITO (sin fechas) con total disponible
   const depOptions = sel ? (() => {
     const m = {};
     sel.entries.forEach(e => { m[e.deposit] = (m[e.deposit] || 0) + (e.qty || 0); });
@@ -105,6 +104,8 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
     if (n > opt.qty) { Alert.alert('Stock insuficiente', `En ${opt.deposit} solo hay ${opt.qty} (${sel.unit}).`); return; }
     if (!recipient.trim()) { Alert.alert('Falta un dato', 'Indica a quién se entregará el material.'); return; }
     if (!destination.trim()) { Alert.alert('Falta un dato', 'Indica a dónde se entregará el material.'); return; }
+
+    // ✅ Descuenta del depósito elegido (reparte entre lotes, primero los más antiguos)
     const lots = sel.entries
       .filter(e => e.deposit === depSel && e.qty > 0)
       .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
@@ -118,6 +119,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
     }
     affected.forEach(([id, take]) => onWithdraw(id, take));
     persistRecipient(recipient.trim());
+
     const rec = {
       id: 's' + Date.now() + Math.random().toString(36).slice(2, 8),
       createdAt: new Date().toISOString(),
@@ -151,7 +153,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
           </TouchableOpacity>
           <TouchableOpacity style={ui.headerBtn} onPress={() => setReportHistory(true)}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <IconReporte color={colors.purple} /><Text style={st.histBtnText}>Historial Salidas</Text>
+              <IconReporte color={colors.purple} /><Text style={st.histBtnText}>Salidas históricas</Text>
             </View>
           </TouchableOpacity>
         </>}
@@ -165,7 +167,7 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
               {Platform.OS === 'web' ? <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={webDateStyle} /> : <TextInput style={st.dateInput} placeholder="AAAA-MM-DD" placeholderTextColor={colors.steel} value={dateTo} onChangeText={t => setDateTo(t.trim())} />}
               {hasDateFilter && (<TouchableOpacity onPress={() => { setDateFrom(''); setDateTo(''); }}><Text style={st.dateClear}>✕ Quitar filtro</Text></TouchableOpacity>)}
             </View>
-            {hasDateFilter && <Text style={st.dateCount}>{historyFiltered.length} salida(s) en el rango · el Historial y su reporte mostrarán solo esto</Text>}
+            {hasDateFilter && <Text style={st.dateCount}>{historyFiltered.length} salida(s) en el rango · el Historial mostrará solo esto</Text>}
           </View>
         )}
       />
@@ -188,6 +190,8 @@ export default function SalidasScreen({ products, onBack, onWithdraw }) {
           </View>
         </ScrollView>
       )}
+
+      {/* ✅✅✅ EL FORMULARIO DE RETIRO (el que te faltaba) */}
       {sel && (
         <ModalShell visible={true} title={`Retirar: ${sel.name}`} onClose={() => setSel(null)} maxWidth={430}>
           <Text style={st.modalSub}>Stock total disponible: {sel.total} {sel.unit}</Text>
