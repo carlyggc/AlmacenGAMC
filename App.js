@@ -63,7 +63,7 @@ function App() {
     })();
   }, []);
 
-   // ✅ HISTORIAL: cada carga = registro NUEVO con su fecha (nunca fusiona ni resta)
+  // ✅ HISTORIAL: cada carga = registro NUEVO con su fecha (nunca fusiona ni resta)
   const addProduct = useCallback((prod) => {
     const p = { ...prod, id: 'p' + Date.now() + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString() };
     api.createProduct(p).catch(() => {});
@@ -98,8 +98,7 @@ function App() {
   const deleteProduct = useCallback((id) => { api.deleteProduct(id); setProducts(prev => prev.filter(p => p.id !== id)); }, []);
   const updatePrice = useCallback((id, price, currency) => { api.updateProduct(id, { price, currency }); setProducts(prev => prev.map(p => p.id === id ? { ...p, price, currency } : p)); }, []);
 
-  // ✅ ÚNICO lugar donde se RESTA stock: Salidas
-    // ✅ ÚNICO lugar donde se RESTA stock: Salidas
+  // ✅✅✅ ÚNICO lugar donde se RESTA stock: Salidas
   const withdraw = useCallback((id, amount) => {
     setProducts(prev => {
       const p = prev.find(x => x.id === id);
@@ -107,7 +106,7 @@ function App() {
       const qty = Math.max(0, (p.qty || 0) - amount);
       const patch = { qty };
       if (qty === 0) {
-        // ✅ Si el material quedó en 0 en TODOS sus lotes → salta solo a Inventario Faltante
+        // ✅ Si el material quedó en 0 en TODOS sus lotes → salta SOLO a Inventario Faltante
         const up = (p.name || '').trim().toUpperCase();
         const resto = prev.reduce((s, x) => s + ((x.name || '').trim().toUpperCase() === up && x.id !== id ? (x.qty || 0) : 0), 0);
         if (resto === 0) { patch.faltante = true; patch.required = Math.max(1, amount || 1); }
@@ -116,6 +115,7 @@ function App() {
       return prev.map(x => (x.id === id ? { ...x, ...patch } : x));
     });
   }, []);
+
   const markFaltante = useCallback((id, req) => { const required = Math.max(1, parseInt(req, 10) || 1); api.updateProduct(id, { faltante: true, required }); setProducts(prev => prev.map(p => p.id === id ? { ...p, faltante: true, required } : p)); }, []);
   const unmarkFaltante = useCallback((id) => { api.updateProduct(id, { faltante: false, required: 0 }); setProducts(prev => prev.map(p => p.id === id ? { ...p, faltante: false, required: 0 } : p)); }, []);
 
