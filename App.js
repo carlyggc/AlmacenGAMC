@@ -63,12 +63,22 @@ function App() {
     })();
   }, []);
 
-  // ✅ HISTORIAL: cada carga = registro NUEVO con su fecha (nunca fusiona ni resta)
+   // ✅ HISTORIAL: cada carga = registro NUEVO con su fecha (nunca fusiona ni resta)
   const addProduct = useCallback((prod) => {
     const p = { ...prod, id: 'p' + Date.now() + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString() };
     api.createProduct(p).catch(() => {});
     setProducts(prev => [p, ...prev]);
-  }, []);
+    // ✅ Si repones stock de un material que estaba en faltantes, limpia el aviso solo
+    if ((p.qty || 0) > 0) {
+      const up = (p.name || '').trim().toUpperCase();
+      products.forEach(x => {
+        if ((x.name || '').trim().toUpperCase() === up && x.faltante === true && (x.qty || 0) === 0) {
+          api.updateProduct(x.id, { faltante: false, required: 0 }).catch(() => {});
+          setProducts(prev => prev.map(y => y.id === x.id ? { ...y, faltante: false, required: 0 } : y));
+        }
+      });
+    }
+  }, [products]);
 
   const renameProduct = useCallback((id, name) => { api.updateProduct(id, { name }); setProducts(prev => prev.map(p => p.id === id ? { ...p, name } : p)); }, []);
   const changeQty = useCallback((id, d) => {
@@ -87,12 +97,20 @@ function App() {
   }, [products]);
   const deleteProduct = useCallback((id) => { api.deleteProduct(id); setProducts(prev => prev.filter(p => p.id !== id)); }, []);
   const updatePrice = useCallback((id, price, currency) => { api.updateProduct(id, { price, currency }); setProducts(prev => prev.map(p => p.id === id ? { ...p, price, currency } : p)); }, []);
+
   // ✅ ÚNICO lugar donde se RESTA stock: Salidas
   const withdraw = useCallback((id, amount) => {
     const p = products.find(x => x.id === id); if (!p) return;
     const qty = Math.max(0, (p.qty || 0) - amount);
-    api.updateProduct(id, { qty });
-    setProducts(prev => prev.map(x => x.id === id ? { ...x, qty } : x));
+    const patch = { qty };
+    if (qty === 0) {
+      // ✅ Si el material quedó en 0 en TODOS sus lotes → salta solo a Inventario Faltante
+      const up = (p.name || '').trim().toUpperCase();
+      const resto = products.reduce((s, x) => s + ((x.name || '').trim().toUpperCase() === up && x.id !== id ? (x.qty || 0) : 0), 0);
+      if (resto === 0) { patch.faltante = true; patch.required = Math.max(1, amount || 1); }
+    }
+    api.updateProduct(id, patch).catch(() => {});
+    setProducts(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
   }, [products]);
   const markFaltante = useCallback((id, req) => { const required = Math.max(1, parseInt(req, 10) || 1); api.updateProduct(id, { faltante: true, required }); setProducts(prev => prev.map(p => p.id === id ? { ...p, faltante: true, required } : p)); }, []);
   const unmarkFaltante = useCallback((id) => { api.updateProduct(id, { faltante: false, required: 0 }); setProducts(prev => prev.map(p => p.id === id ? { ...p, faltante: false, required: 0 } : p)); }, []);
